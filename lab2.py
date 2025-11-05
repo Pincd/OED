@@ -1,6 +1,8 @@
 from typing import Iterable
 import matplotlib.pyplot as plt
 import math
+import numpy as np
+import pandas as pd
 
 m_array = [3, 11, 29, 26, 22, 7, 2]
 J_list = [(-2.5, -2), (-2, -1.5), (-1.5, -1), (-1, -0.5), (-0.5, 0), (0, 0.5), (0.5, 1)]
@@ -65,8 +67,6 @@ def norm_law(delta, mo, j_list):
 
     x = list()
     f_x = list()
-    pi = 3.14
-    e = 2.71828
 
     for i, (x_left, x_right) in enumerate(j_list):
         prev_left, prev_right = j_list[i - 1]
@@ -79,9 +79,66 @@ def norm_law(delta, mo, j_list):
         if x_right!=x_right-1 and x_left!=x_right-1:
             x.append(x_right)
     for i in x:
-        f_x.append(1/(delta*math.sqrt(2*pi))*e**-(((i-mo)**2)/2*delta**2))
+        f_x.append((1/(delta*math.sqrt(2*math.pi)))*math.exp(-(((i-mo)**2)/(2*delta**2))))
     return f_x, x
 
+def excel_reader(filename):
+    df = pd.read_excel(filename)
+    return df
+
+def hypothesis_check(mo, delta, j_list):
+
+    phi_c = list()
+    df = excel_reader('table.xlsx')
+    df.columns = df.columns.str.strip()
+    #print(df.columns)
+    arg_1, arg_2 = 0.0, 0.0
+    for x_left, x_right in j_list:
+        arg_1 = round(((x_right - mo) / delta), 2)
+        arg_2 = round(((x_left - mo) / delta), 2)
+        if arg_1 in df["x"].values:
+            f_1 = df.loc[df["x"]==arg_1, "Ф1(x)"].values[0]
+            #print(f_1)
+        else:
+            df = df.sort_values("x").reset_index(drop=True)
+            mask_left = df["x"] <= arg_1  # все точки левее (или равные)
+            mask_right = df["x"] >= arg_1  # все точки правее (или равные)
+
+            # последний слева и первый справа
+            x1 = df.loc[mask_right, "x"].min()
+            x2 = df.loc[mask_left, "x"].max()
+
+            y1 = df.loc[df["x"] == x1, "Ф1(x)"].values[0]
+            y2 = df.loc[df["x"] == x2, "Ф1(x)"].values[0]
+
+            f_1 = round(((arg_1 - x2) / (x1 - x2)) * y1 + ((arg_1 - x1) / (x2 - x1)) * y2, 4)
+        if arg_2 in df["x"].values:
+            f_2 = df.loc[df["x"]==arg_2, "Ф1(x)"].values[0]
+            #print(f_2)
+        else:
+            df = df.sort_values("x").reset_index(drop=True)
+            mask_left = df["x"] <= arg_2  # все точки левее (или равные)
+            mask_right = df["x"] >= arg_2  # все точки правее (или равные)
+
+            # последний слева и первый справа
+            x1 = df.loc[mask_right, "x"].min()
+            x2 = df.loc[mask_left, "x"].max()
+
+            y1 = df.loc[df["x"] == x1, "Ф1(x)"].values[0]
+            y2 = df.loc[df["x"] == x2, "Ф1(x)"].values[0]
+
+            f_2 = round(((arg_2-x2)/(x1-x2))*y1+((arg_2-x1)/(x2-x1))*y2, 4)
+
+        phi_c.append(f_1-f_2)
+
+    return phi_c
+
+def smooth_curve(delta, mo, start, end):
+    x = np.arange(start, end, 0.01)
+    y = list()
+    for i in x:
+        y.append((1/(delta*math.sqrt(2*math.pi)))*math.exp(-(((i-mo)**2)/(2*delta**2))))
+    return x, y
 def main():
 
 
@@ -112,6 +169,35 @@ def main():
     f_x, x = norm_law(delta_result,MO,J_list)
     print(f'f_x: {f_x}')
 
+    x, y = smooth_curve(delta_result,MO,-2.5,1)
+
+    # 4. Проверить гипотезу о соответствии статистического и теоретического распределений
+    # ( т. е. гипотезу о нормальном распределении случайной величины) методом К. Пирсона при уровне значимости: α = 0,025 – для четных вариантов
+
+    # f1_table = excel_reader('table.xlsx')
+    # print(f1_table)
+
+    check_result = hypothesis_check(MO,delta_result,J_list)
+    check_result_float = list()
+    print("Полученный p_l: ")
+    for np_x in check_result:
+        check_result_float.append(round(np_x.item(), 3))
+    print(check_result_float)
+    # for value in check_result_float:
+    #     print(round(value, 3))
+    pl_star_minus_pl = []
+    for pl, pl_star in zip(check_result_float,phi):
+        pl_star_minus_pl.append(round(pl_star-pl, 3))
+    print("Полученный p_l_* - pl: ")
+    print(pl_star_minus_pl)
+    pl_star_minus_pl_2 = []
+    for pl in pl_star_minus_pl:
+        pl_star_minus_pl_2.append(round(pl**2, 3))
+    print("Полученный (p_l_* - pl)^2: ")
+    print(pl_star_minus_pl_2)
+
+    # Графики
+
     plt.bar(
         x=intervals,
         height=phi,
@@ -121,10 +207,10 @@ def main():
     )
     plt.plot(
         x,
-        f_x,
+        y,
         'r-',
         linewidth=2,
-        label='Нормальная кривая'
+        label='Теоретическая кривая распределения'
     )
 
     plt.xlabel("x")
@@ -132,7 +218,7 @@ def main():
     plt.title("Гистограмма распределения")
     plt.legend()
     plt.grid(axis='y', linestyle=':', alpha=0.7)
-    plt.show()
+    #plt.show()
 
 if __name__ == '__main__':
     main()
