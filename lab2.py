@@ -16,7 +16,7 @@ def gistogram_maker(j_list: Iterable[float], p_list: Iterable[float])->tuple[lis
 
     intervals = []
     h = []
-    phi = []
+    phi = [] #φ
 
     h = [x_right - x_left for (x_left, x_right) in j_list]
     # for x_left, x_right in j_list:
@@ -47,6 +47,7 @@ def gistogram_maker(j_list: Iterable[float], p_list: Iterable[float])->tuple[lis
 
     return intervals, phi
 
+# Оценка мат. ожидания
 def mo_calc(j_list, result):
     x = [(0.5*(x_left+x_right)) for x_left, x_right in j_list]
     m = float(0)
@@ -54,6 +55,7 @@ def mo_calc(j_list, result):
         m += x_l*P_l
     return m
 
+# Оценка СКО
 def delta(result, mo, j_list):
     D = float(0)
     x = [(0.5 * (x_left + x_right)) for x_left, x_right in j_list]
@@ -63,6 +65,7 @@ def delta(result, mo, j_list):
     d = math.sqrt(D)
     return d
 
+# Вычисление аппроксимирующей кривой нормального распределения
 def norm_law(delta, mo, j_list):
 
     x = list()
@@ -79,7 +82,7 @@ def norm_law(delta, mo, j_list):
         if x_right!=x_right-1 and x_left!=x_right-1:
             x.append(x_right)
     for i in x:
-        f_x.append((1/(delta*math.sqrt(2*math.pi)))*math.exp(-(((i-mo)**2)/(2*delta**2))))
+        f_x.append(round((1/(delta*math.sqrt(2*math.pi)))*math.exp(-(((i-mo)**2)/(2*delta**2))), 3))
     return f_x, x
 
 def excel_reader(filename):
@@ -139,22 +142,41 @@ def smooth_curve(delta, mo, start, end):
     for i in x:
         y.append((1/(delta*math.sqrt(2*math.pi)))*math.exp(-(((i-mo)**2)/(2*delta**2))))
     return x, y
+
+def print_table_rows(headers, rows, precision=3):
+    """
+    headers: список названий строк
+    rows: список списков со значениями
+    """
+    for header, values in zip(headers, rows):
+        formatted = "  ".join(f"{v:.{precision}f}" for v in values)
+        print(f"{header:<20}{formatted}")
+
+# пример вызова:
+headers = [
+    "p*ₗ:",
+    "pₗ:",                      # ← красивый вариант из Unicode
+    "p*ₗ − pₗ:",
+    "(p*ₗ − pₗ))²:",
+    "n(p*ₗ − pₗ))² / pₗ:",
+]
+
 def main():
 
 
     # 1. Найти статистические вероятности попадания значений случайной величины в интервалы Jl, l=(1,7) ̅ по заданному числу попаданий ml
     result = p_calculate(m_array,len(m_array))
-    print(f'Jl {J_list}')
-    print(f'ml {m_array}')
-    print(f'Pl {result}')
+    print(f'Jₗ {J_list}')
+    print(f'mₗ {m_array}')
+    print(f'P*ₗ {result}\n')
     #TODO: table view
 
     # 2. Построить гистограмму распределения экспериментальных данных.
     intervals, phi = gistogram_maker(J_list, result)
-    print("Intervals length: ", len(intervals))
-    print("Phi length: ", len(phi))
-    print(f'Высота: {phi}')
-    print(f'Ширина: {intervals}')
+    #print("Intervals length: ", len(intervals))
+    #print("Phi length: ", len(phi))
+    #print(f'Высота (φ*ₗ): {phi}')
+    #print(f'Ширина: {intervals}')
 
 
 
@@ -163,11 +185,12 @@ def main():
     MO = mo_calc(J_list, result)
     delta_result = delta(result, MO, J_list)
 
-    print(f'Эмпирическое МО: {MO}')
-    print(f'Эмпирическая дисперсия {delta_result}')
+    print(f'Оценка мат. ожидания: {MO}')
+    print(f'Оценка СКО: {delta_result}\n')
 
     f_x, x = norm_law(delta_result,MO,J_list)
-    print(f'f_x: {f_x}')
+    print(f'x: {x}')
+    print(f'f(xₗ): {f_x}\n')
 
     x, y = smooth_curve(delta_result,MO,-2.5,1)
 
@@ -177,24 +200,40 @@ def main():
     # f1_table = excel_reader('table.xlsx')
     # print(f1_table)
 
+    # Расчитываем вероятность попадания случайной величины в диапозоны Jₗ (pₗ)
     check_result = hypothesis_check(MO,delta_result,J_list)
     check_result_float = list()
-    print("Полученный p_l: ")
     for np_x in check_result:
         check_result_float.append(round(np_x.item(), 3))
-    print(check_result_float)
-    # for value in check_result_float:
-    #     print(round(value, 3))
+    # Расчитываем p*ₗ-pₗ
     pl_star_minus_pl = []
-    for pl, pl_star in zip(check_result_float,phi):
+    for pl, pl_star in zip(check_result_float, result):
         pl_star_minus_pl.append(round(pl_star-pl, 3))
-    print("Полученный p_l_* - pl: ")
-    print(pl_star_minus_pl)
+    # Расчитываем (p*ₗ-pₗ)^2
     pl_star_minus_pl_2 = []
     for pl in pl_star_minus_pl:
         pl_star_minus_pl_2.append(round(pl**2, 3))
-    print("Полученный (p_l_* - pl)^2: ")
-    print(pl_star_minus_pl_2)
+    # Расчитываем n(p*ₗ-pₗ)^2/pₗ
+
+    final_pl = []
+    n = sum(m_array)
+    for pl, phi_l in zip(pl_star_minus_pl_2, result):
+        final_pl.append(round((n*pl)/phi_l, 3))
+    # Находим наблюдаемое значение показателя согласованности гипотезы
+    u = sum(final_pl)
+
+    rows = [
+        check_result_float,
+        result,
+        pl_star_minus_pl,
+        pl_star_minus_pl_2,
+        final_pl,
+    ]
+
+    print(f'Jₗ: {J_list}\n')
+    print("РЕЗУЛЬТАТЫ ВЫЧИСЛЕНИЙ:\n")
+    print_table_rows(headers, rows)
+    print("\nНаблюдаемое значение u:", round(u, 3))
 
     # Графики
 
@@ -214,11 +253,11 @@ def main():
     )
 
     plt.xlabel("x")
-    plt.ylabel("ф*_l")
+    plt.ylabel("φ*ₗ")
     plt.title("Гистограмма распределения")
     plt.legend()
     plt.grid(axis='y', linestyle=':', alpha=0.7)
-    #plt.show()
+    plt.show()
 
 if __name__ == '__main__':
     main()
